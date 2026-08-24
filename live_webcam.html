@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaPipe — Interactive Segmenter (Live Webcam)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171A;
+    --panel:#1B1F23;
+    --panel-2:#20252A;
+    --border:#2B3138;
+    --text:#E9E6DF;
+    --text-dim:#868D96;
+    --text-dim-2:#5B6169;
+    --accent:#1FC7D4;
+    --accent-soft:rgba(31,199,212,0.20);
+    --accent-dim:rgba(31,199,212,0.45);
+    --ok:#4ADE80;
+    --checker-a:#1D2125;
+    --checker-b:#25292E;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    min-height:100vh; display:flex; flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    padding:22px 28px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    letter-spacing:0.18em; color:var(--accent); text-transform:uppercase;
+  }
+  h1{ font-size:22px; font-weight:600; margin:0; letter-spacing:-0.01em; }
+  header p{ margin:0; color:var(--text-dim); font-size:13px; flex-basis:100%; }
+  .badge{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text-dim-2); border:1px solid var(--border);
+    border-radius:20px; padding:3px 10px;
+  }
+
+  .toolbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:14px 28px; background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  .group{
+    display:flex; align-items:center; gap:8px; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px;
+  }
+  .group label{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase;
+  }
+  button{
+    font-family:'Space Grotesk', sans-serif; font-weight:500; font-size:13px;
+    color:var(--text); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  button:hover{border-color:var(--text-dim-2);}
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#062226; font-weight:600; }
+  button.primary:hover{ filter:brightness(1.1); }
+  button:disabled{opacity:0.35; cursor:not-allowed;}
+  
+  a.nav-btn{
+    text-decoration:none; color:var(--text-dim); font-size:13px;
+    padding:7px 12px; border:1px solid var(--border); border-radius:8px;
+    font-family:'Space Grotesk', sans-serif; transition:all 0.15s;
+  }
+  a.nav-btn:hover{ color:var(--text); border-color:var(--text-dim-2); }
+
+  input[type="range"]{
+    -webkit-appearance:none; width:110px; height:3px; background:var(--border); outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #14171A;
+  }
+  .readout{ font-family:'JetBrains Mono', monospace; font-size:12px; min-width:30px; text-align:right; }
+  .spacer{flex:1;}
+
+  main{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    padding:32px; position:relative; overflow:auto;
+  }
+  .stage{
+    position:relative; border-radius:12px; overflow:hidden;
+    box-shadow:0 0 0 1px var(--border), 0 30px 60px -20px rgba(0,0,0,0.6);
+    background:var(--checker-b); max-width:100%; max-height:100%;
+  }
+  video{ display:none; }
+  canvas{ display:block; max-width:100%; height:auto; }
+  #overlay{ position:absolute; top:0; left:0; }
+  #interactive{ position:absolute; top:0; left:0; cursor:crosshair; touch-action:none; }
+
+  .statusbar{
+    border-top:1px solid var(--border); background:var(--panel);
+    padding:10px 28px; display:flex; align-items:center; gap:22px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--text-dim);
+  }
+  .statusbar b{ color:var(--text); font-weight:500; }
+  .statusbar .dot{ width:6px; height:6px; border-radius:50%; background:var(--text-dim-2); display:inline-block; margin-right:6px; }
+  .statusbar .dot.on{ background:var(--ok); }
+  .statusbar .dot.busy{ background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="eyebrow">MediaPipe · Interactive Segmentation</span>
+  <h1>Interactive Segmenter (Live Webcam)</h1>
+  <span class="badge">Real-time Tracking & Cutout</span>
+  <p>ขยับเมาส์หรือแตะบนหน้าจอเพื่อตัดแยกวัตถุจากกล้องสด และกดส่งออกเป็น PNG แบบเจาะฉากหลังได้</p>
+</header>
+
+<div class="toolbar">
+  <button class="primary" id="webcamBtn">เปิดใช้งานกล้อง (Start Camera)</button>
+  <a href="mediapipe-interactive-segmenter.html" class="nav-btn">← กลับไปหน้าอัปโหลดภาพนิ่ง</a>
+
+  <div class="group">
+    <label>Threshold</label>
+    <input type="range" id="threshold" min="0" max="100" value="50">
+    <span class="readout" id="thresholdVal">0.50</span>
+  </div>
+
+  <div class="spacer"></div>
+  <button id="clearPointBtn">ล้างจุดเลือก (Reset)</button>
+  <button class="primary" id="exportBtn" disabled>📷 ถ่ายภาพส่งออก PNG</button>
+</div>
+
+<main>
+  <div class="stage" id="stage">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="base"></canvas>
+    <canvas id="overlay"></canvas>
+    <canvas id="interactive"></canvas>
+  </div>
+</main>
+
+<div class="statusbar">
+  <span><span class="dot" id="statusDot"></span><b id="statusText">กำลังเตรียมระบบ…</b></span>
+  <span style="margin-left:auto;">@mediapipe/tasks-vision</span>
+</div>
+
+<script type="module">
+import {
+  FilesetResolver,
+  InteractiveSegmenterLegacy
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+const webcam = document.getElementById('webcam');
+const baseCanvas = document.getElementById('base');
+const overlayCanvas = document.getElementById('overlay');
+const interactiveCanvas = document.getElementById('interactive');
+const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+const overlayCtx = overlayCanvas.getContext('2d');
+const interactiveCtx = interactiveCanvas.getContext('2d');
+
+const webcamBtn = document.getElementById('webcamBtn');
+const clearPointBtn = document.getElementById('clearPointBtn');
+const exportBtn = document.getElementById('exportBtn');
+const thresholdInput = document.getElementById('threshold');
+const thresholdVal = document.getElementById('thresholdVal');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
+
+let segmenter = null;
+let activePoint = null;
+let isCameraRunning = false;
+let confidenceMask = null;
+let isProcessing = false;
+
+function setStatus(on, text, busy){
+  statusDot.classList.toggle('on', !!on && !busy);
+  statusDot.classList.toggle('busy', !!busy);
+  statusText.textContent = text;
+}
+
+// 1. Load Model
+async function init(){
+  try{
+    setStatus(false, 'กำลังโหลด Wasm Runtime…', true);
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    setStatus(false, 'กำลังโหลดโมเดล Interactive Segmenter…', true);
+    segmenter = await InteractiveSegmenterLegacy.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+      outputConfidenceMasks: true
+    });
+    setStatus(true, 'โมเดลพร้อมใช้งาน — กด "เปิดใช้งานกล้อง"');
+  }catch(err){
+    console.error(err);
+    setStatus(false, 'ไม่สามารถโหลดโมเดลได้');
+  }
+}
+init();
+
+// 2. Start / Stop Camera
+webcamBtn.addEventListener('click', async () => {
+  if(!segmenter) return;
+  if(isCameraRunning){
+    stopCamera();
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    webcam.srcObject = stream;
+    webcam.addEventListener('loadeddata', () => {
+      const w = webcam.videoWidth;
+      const h = webcam.videoHeight;
+      baseCanvas.width = overlayCanvas.width = interactiveCanvas.width = w;
+      baseCanvas.height = overlayCanvas.height = interactiveCanvas.height = h;
+      
+      isCameraRunning = true;
+      webcamBtn.textContent = 'ปิดกล้อง (Stop Camera)';
+      setStatus(true, 'กล้องทำงานแล้ว — คลิกเลือกวัตถุบนหน้าจอ');
+      renderLoop();
+    });
+  }catch(err){
+    alert('ไม่สามารถเปิดใช้งานกล้องได้: ' + err.message);
+  }
+});
+
+function stopCamera(){
+  isCameraRunning = false;
+  const stream = webcam.srcObject;
+  if(stream){
+    stream.getTracks().forEach(t => t.stop());
+  }
+  webcam.srcObject = null;
+  webcamBtn.textContent = 'เปิดใช้งานกล้อง (Start Camera)';
+  confidenceMask = null;
+  activePoint = null;
+  exportBtn.disabled = true;
+  baseCtx.clearRect(0,0,baseCanvas.width,baseCanvas.height);
+  overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+  interactiveCtx.clearRect(0,0,interactiveCanvas.width,interactiveCanvas.height);
+  setStatus(true, 'ปิดกล้องแล้ว');
+}
+
+// 3. Pointer Interaction
+interactiveCanvas.addEventListener('pointerdown', updatePoint);
+interactiveCanvas.addEventListener('pointermove', (e) => {
+  if(e.buttons === 1) updatePoint(e);
+});
+
+function updatePoint(e){
+  if(!isCameraRunning) return;
+  const rect = interactiveCanvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (baseCanvas.width / rect.width);
+  const py = (e.clientY - rect.top) * (baseCanvas.height / rect.height);
+  activePoint = { x: px / baseCanvas.width, y: py / baseCanvas.height };
+  drawTargetPoint(px, py);
+}
+
+clearPointBtn.addEventListener('click', () => {
+  activePoint = null;
+  confidenceMask = null;
+  exportBtn.disabled = true;
+  overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+  interactiveCtx.clearRect(0,0,interactiveCanvas.width,interactiveCanvas.height);
+});
+
+function drawTargetPoint(px, py){
+  interactiveCtx.clearRect(0,0,interactiveCanvas.width,interactiveCanvas.height);
+  if(!activePoint) return;
+  interactiveCtx.beginPath();
+  interactiveCtx.arc(px, py, 6, 0, Math.PI * 2);
+  interactiveCtx.fillStyle = '#1FC7D4';
+  interactiveCtx.shadowColor = '#000';
+  interactiveCtx.shadowBlur = 4;
+  interactiveCtx.fill();
+  interactiveCtx.lineWidth = 2;
+  interactiveCtx.strokeStyle = '#FFFFFF';
+  interactiveCtx.stroke();
+}
+
+// 4. Main Render Loop
+async function renderLoop(){
+  if(!isCameraRunning) return;
+
+  baseCtx.drawImage(webcam, 0, 0, baseCanvas.width, baseCanvas.height);
+
+  if(activePoint && !isProcessing && segmenter){
+    isProcessing = true;
+    try{
+      const result = segmenter.segment(webcam, { keypoint: activePoint });
+      const mask = result.confidenceMasks[0];
+      confidenceMask = mask.getAsFloat32Array();
+      mask.close?.();
+      renderMaskOverlay();
+      exportBtn.disabled = false;
+    }catch(err){
+      console.error(err);
+    }finally{
+      isProcessing = false;
+    }
+  }
+
+  requestAnimationFrame(renderLoop);
+}
+
+// 5. Render Mask Overlay
+thresholdInput.addEventListener('input', () => {
+  thresholdVal.textContent = (thresholdInput.value / 100).toFixed(2);
+  if(confidenceMask) renderMaskOverlay();
+});
+
+function renderMaskOverlay(){
+  if(!confidenceMask) return;
+  const w = baseCanvas.width;
+  const h = baseCanvas.height;
+  const threshold = thresholdInput.value / 100;
+  const imgData = overlayCtx.createImageData(w, h);
+
+  for(let i = 0; i < w * h; i++){
+    const v = confidenceMask[i];
+    const idx = i * 4;
+    if(v >= threshold){
+      imgData.data[idx]     = 31;   // R
+      imgData.data[idx+1]   = 199;  // G
+      imgData.data[idx+2]   = 212;  // B
+      imgData.data[idx+3]   = Math.round(110 + v * 70); // Alpha
+    }
+  }
+  overlayCtx.putImageData(imgData, 0, 0);
+}
+
+// 6. Export Cutout Image as PNG
+exportBtn.addEventListener('click', exportCutoutPNG);
+
+function exportCutoutPNG(){
+  if(!confidenceMask || !isCameraRunning) return;
+  
+  const w = baseCanvas.width;
+  const h = baseCanvas.height;
+  const threshold = thresholdInput.value / 100;
+  
+  // ดึง Pixels ของวิดีโอเฟรมปัจจุบัน
+  const frameData = baseCtx.getImageData(0, 0, w, h).data;
+  
+  // สร้าง Canvas สำหรับ Render รูปเจาะฉากหลัง
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = w;
+  outCanvas.height = h;
+  const outCtx = outCanvas.getContext('2d');
+  const outData = outCtx.createImageData(w, h);
+
+  for(let i = 0; i < w * h; i++){
+    const idx = i * 4;
+    const isSelected = confidenceMask[i] >= threshold;
+    
+    outData.data[idx]     = frameData[idx];     // Red
+    outData.data[idx+1]   = frameData[idx+1];   // Green
+    outData.data[idx+2]   = frameData[idx+2];   // Blue
+    outData.data[idx+3]   = isSelected ? 255 : 0; // Alpha (ตรงที่ไม่ใช่วัตถุจะใส 0%)
+  }
+
+  outCtx.putImageData(outData, 0, 0);
+
+  // สั่งดาวน์โหลดไฟล์ PNG
+  outCanvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `webcam-cutout-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+</script>
+</body>
+</html>
