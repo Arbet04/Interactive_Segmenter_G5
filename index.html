@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaPipe — Interactive Segmenter Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171A;
+    --panel:#1B1F23;
+    --panel-2:#20252A;
+    --border:#2B3138;
+    --text:#E9E6DF;
+    --text-dim:#868D96;
+    --text-dim-2:#5B6169;
+    --accent:#1FC7D4;
+    --accent-soft:rgba(31,199,212,0.20);
+    --accent-dim:rgba(31,199,212,0.45);
+    --ok:#4ADE80;
+    --checker-a:#1D2125;
+    --checker-b:#25292E;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    min-height:100vh; display:flex; flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  header{
+    padding:20px 28px 16px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    letter-spacing:0.18em; color:var(--accent); text-transform:uppercase;
+  }
+  h1{ font-size:22px; font-weight:600; margin:0; letter-spacing:-0.01em; }
+  header p{ margin:0; color:var(--text-dim); font-size:13px; flex-basis:100%; }
+
+  /* Tab Navigation */
+  .tab-group{
+    display:flex; background:var(--panel-2); border:1px solid var(--border);
+    border-radius:var(--radius); padding:4px; gap:4px;
+  }
+  .tab-btn{
+    background:transparent; border:none; color:var(--text-dim);
+    font-size:13px; font-weight:500; padding:6px 16px; border-radius:6px;
+    cursor:pointer; transition:all 0.15s ease;
+  }
+  .tab-btn:hover{ color:var(--text); }
+  .tab-btn.active{ background:var(--accent); color:#062226; font-weight:600; }
+
+  .toolbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:14px 28px; background:var(--panel); border-bottom:1px solid var(--border);
+  }
+  .group{
+    display:flex; align-items:center; gap:8px; background:var(--panel-2);
+    border:1px solid var(--border); border-radius:var(--radius); padding:6px 10px;
+  }
+  .group label{
+    font-family:'JetBrains Mono', monospace; font-size:10.5px;
+    color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase;
+  }
+  button{
+    font-family:'Space Grotesk', sans-serif; font-weight:500; font-size:13px;
+    color:var(--text); background:var(--panel-2); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  button:hover{border-color:var(--text-dim-2);}
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#062226; font-weight:600; }
+  button.primary:hover{ filter:brightness(1.1); }
+  button:disabled{opacity:0.35; cursor:not-allowed;}
+
+  input[type="file"]{display:none;}
+  input[type="range"]{
+    -webkit-appearance:none; width:100px; height:3px; background:var(--border); outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #14171A;
+  }
+  .readout{ font-family:'JetBrains Mono', monospace; font-size:12px; min-width:30px; text-align:right; }
+  .spacer{flex:1;}
+
+  main{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    padding:32px; position:relative; overflow:auto;
+  }
+  .stage{
+    position:relative; border-radius:12px; overflow:hidden;
+    box-shadow:0 0 0 1px var(--border), 0 30px 60px -20px rgba(0,0,0,0.6);
+    background-image:
+      linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+    background-size:20px 20px;
+    background-position:0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color:var(--checker-b);
+    max-width:100%; max-height:100%;
+  }
+  video{ display:none; }
+  canvas{ display:block; max-width:100%; height:auto; }
+  #overlay{ position:absolute; top:0; left:0; pointer-events:none; }
+  #interactive{ position:absolute; top:0; left:0; cursor:crosshair; touch-action:none; }
+
+  .dropzone{
+    width:min(640px, 86vw); aspect-ratio:16/10;
+    border:1.5px dashed var(--border); border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; padding:24px; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone.drag{ border-color:var(--accent); background:var(--accent-soft); }
+  .dropzone .icon{
+    width:52px; height:52px; border-radius:50%;
+    border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+  }
+  .dropzone .icon svg{ width:22px; height:22px; stroke:var(--text-dim); }
+  .dropzone strong{ font-size:15px; font-weight:600; }
+  .dropzone span{ font-size:12.5px; color:var(--text-dim); font-family:'JetBrains Mono', monospace; }
+
+  .loading-overlay{
+    position:absolute; inset:0; z-index:5; background:rgba(20,23,26,0.82);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; color:var(--text-dim);
+  }
+  .spinner{
+    width:34px; height:34px; border-radius:50%;
+    border:2.5px solid var(--border); border-top-color:var(--accent);
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .statusbar{
+    border-top:1px solid var(--border); background:var(--panel);
+    padding:10px 28px; display:flex; align-items:center; gap:22px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--text-dim);
+  }
+  .statusbar b{ color:var(--text); font-weight:500; }
+  .statusbar .dot{ width:6px; height:6px; border-radius:50%; background:var(--text-dim-2); display:inline-block; margin-right:6px; }
+  .statusbar .dot.on{ background:var(--ok); }
+  .statusbar .dot.busy{ background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <span class="eyebrow">MediaPipe · Interactive Segmentation</span>
+    <h1>Interactive Segmenter Studio</h1>
+  </div>
+  
+  <div class="tab-group" style="margin-left:auto;">
+    <button class="tab-btn active" id="tabImage">🖼️ โหมดรูปภาพ (Image)</button>
+    <button class="tab-btn" id="tabWebcam">📷 โหมดกล้องสด (Webcam)</button>
+  </div>
+  <p id="headerDesc">ลากวาดเส้นบนวัตถุที่อยากเลือก แล้วให้โมเดลช่วยตัดขอบแยกออกจากฉากหลัง</p>
+</header>
+
+<div class="toolbar">
+  <!-- Image Controls -->
+  <div id="imageControls" style="display:flex; gap:10px; align-items:center;">
+    <button class="primary" id="uploadBtn">อัปโหลดภาพ</button>
+    <input type="file" id="fileInput" accept="image/*">
+    <button id="clearBtn" disabled>ล้างเส้น (Clear)</button>
+  </div>
+
+  <!-- Webcam Controls -->
+  <div id="webcamControls" style="display:none; gap:10px; align-items:center;">
+    <button class="primary" id="webcamToggleBtn">เปิดใช้งานกล้อง</button>
+    <button id="clearPointBtn">ล้างจุดเลือก (Reset Point)</button>
+  </div>
+
+  <div class="group">
+    <label>Threshold</label>
+    <input type="range" id="threshold" min="0" max="100" value="50">
+    <span class="readout" id="thresholdVal">0.50</span>
+  </div>
+
+  <div class="spacer"></div>
+  <button class="primary" id="exportBtn" disabled>📷 ส่งออก PNG เจาะใส</button>
+</div>
+
+<main>
+  <!-- Dropzone for Image Mode -->
+  <div class="dropzone" id="dropzone">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+    </div>
+    <strong>ลากภาพมาวาง หรือคลิกเพื่อเลือกไฟล์</strong>
+    <span>JPG · PNG · WEBP — ประมวลผลแบบ On-Device บนเบราว์เซอร์</span>
+  </div>
+
+  <!-- Canvas Container -->
+  <div class="stage" id="stage" style="display:none;">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="base"></canvas>
+    <canvas id="overlay"></canvas>
+    <canvas id="interactive"></canvas>
+    <div class="loading-overlay" id="inferOverlay" style="display:none;">
+      <div class="spinner"></div>
+      <span id="inferText">กำลังประมวลผล…</span>
+    </div>
+  </div>
+</main>
+
+<div class="statusbar">
+  <span><span class="dot" id="statusDot"></span><b id="statusText">กำลังเตรียมระบบ…</b></span>
+  <span style="margin-left:auto;">@mediapipe/tasks-vision</span>
+</div>
+
+<script type="module">
+import {
+  FilesetResolver,
+  InteractiveSegmenterLegacy
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+// DOM Elements
+const tabImage = document.getElementById('tabImage');
+const tabWebcam = document.getElementById('tabWebcam');
+const headerDesc = document.getElementById('headerDesc');
+
+const imageControls = document.getElementById('imageControls');
+const webcamControls = document.getElementById('webcamControls');
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
+const clearBtn = document.getElementById('clearBtn');
+const webcamToggleBtn = document.getElementById('webcamToggleBtn');
+const clearPointBtn = document.getElementById('clearPointBtn');
+const exportBtn = document.getElementById('exportBtn');
+
+const thresholdInput = document.getElementById('threshold');
+const thresholdVal = document.getElementById('thresholdVal');
+
+const dropzone = document.getElementById('dropzone');
+const stage = document.getElementById('stage');
+const webcam = document.getElementById('webcam');
+const baseCanvas = document.getElementById('base');
+const overlayCanvas = document.getElementById('overlay');
+const interactiveCanvas = document.getElementById('interactive');
+const inferOverlay = document.getElementById('inferOverlay');
+
+const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+const overlayCtx = overlayCanvas.getContext('2d');
+const interactiveCtx = interactiveCanvas.getContext('2d');
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+// Constants & State
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
+const MAX_DIM = 800;
+
+let currentMode = 'image'; // 'image' | 'webcam'
+let segmenter = null;
+let isReady = false;
+
+// Image Mode States
+let imgEl = null;
+let currentScribble = [];
+let isDrawing = false;
+let drawingPts = null;
+let lastCanvasPt = null;
+
+// Webcam Mode States
+let isCameraRunning = false;
+let activePoint = null;
+let isProcessing = false;
+
+// Shared Output State
+let confidenceMask = null;
+let W = 0, H = 0;
+
+function setStatus(on, text, busy){
+  statusDot.classList.toggle('on', !!on && !busy);
+  statusDot.classList.toggle('busy', !!busy);
+  statusText.textContent = text;
+}
+
+// 1. Model Initialization
+async function initModel(){
+  try{
+    setStatus(false, 'กำลังโหลด Wasm Runtime…', true);
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    setStatus(false, 'กำลังโหลดโมเดล Interactive Segmenter…', true);
+    segmenter = await InteractiveSegmenterLegacy.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+      outputConfidenceMasks: true
+    });
+    isReady = true;
+    setStatus(true, 'โมเดลพร้อมใช้งาน — อัปโหลดภาพหรือเปิดกล้องเพื่อเริ่ม');
+  }catch(err){
+    console.error(err);
+    setStatus(false, 'ไม่สามารถโหลดโมเดลได้');
+  }
+}
+initModel();
+
+// 2. Mode Switching (Tabs)
+tabImage.addEventListener('click', () => switchMode('image'));
+tabWebcam.addEventListener('click', () => switchMode('webcam'));
+
+function switchMode(mode){
+  if(currentMode === mode) return;
+  currentMode = mode;
+
+  tabImage.classList.toggle('active', mode === 'image');
+  tabWebcam.classList.toggle('active', mode === 'webcam');
+  imageControls.style.display = mode === 'image' ? 'flex' : 'none';
+  webcamControls.style.display = mode === 'webcam' ? 'flex' : 'none';
+
+  resetState();
+
+  if(mode === 'image'){
+    headerDesc.textContent = 'ลากวาดเส้นบนวัตถุที่อยากเลือก แล้วให้โมเดลช่วยตัดขอบแยกออกจากฉากหลัง';
+    dropzone.style.display = 'flex';
+    stage.style.display = 'none';
+  } else {
+    headerDesc.textContent = 'ขยับเมาส์หรือแตะบนหน้าจอเพื่อตัดแยกวัตถุจากกล้องสดแบบเรียลไทม์';
+    dropzone.style.display = 'none';
+    stage.style.display = 'block';
+  }
+}
+
+function resetState(){
+  if(isCameraRunning) stopCamera();
+  confidenceMask = null;
+  currentScribble = [];
+  activePoint = null;
+  imgEl = null;
+  exportBtn.disabled = true;
+  clearBtn.disabled = true;
+  
+  baseCtx.clearRect(0,0,W,H);
+  overlayCtx.clearRect(0,0,W,H);
+  interactiveCtx.clearRect(0,0,interactiveCtx.canvas.width, interactiveCtx.canvas.height);
+}
+
+// 3. Image Mode Handling
+uploadBtn.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+
+['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if(f && f.type.startsWith('image/')) loadFile(f);
+});
+
+function loadFile(file){
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    let w = img.naturalWidth, h = img.naturalHeight;
+    const scale = Math.min(1, MAX_DIM / Math.max(w,h));
+    W = Math.max(1, Math.round(w*scale));
+    H = Math.max(1, Math.round(h*scale));
+
+    baseCanvas.width = overlayCanvas.width = interactiveCanvas.width = W;
+    baseCanvas.height = overlayCanvas.height = interactiveCanvas.height = H;
+
+    baseCtx.drawImage(img, 0, 0, W, H);
+    imgEl = img;
+    confidenceMask = null;
+    currentScribble = [];
+    
+    overlayCtx.clearRect(0,0,W,H);
+    interactiveCtx.clearRect(0,0,W,H);
+
+    dropzone.style.display = 'none';
+    stage.style.display = 'block';
+    updateButtons();
+    setStatus(true, 'ลากวาดเส้นบนวัตถุเพื่อเลือกขอบ');
+  };
+  img.src = url;
+}
+
+// 4. Pointer Interaction (Image Stroke & Webcam Point)
+function toNorm(e){
+  const rect = interactiveCanvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (W / rect.width);
+  const py = (e.clientY - rect.top) * (H / rect.height);
+  return { x: px / W, y: py / H, px, py };
+}
+
+interactiveCanvas.addEventListener('pointerdown', (e) => {
+  if(!isReady) return;
+
+  if(currentMode === 'image'){
+    if(!imgEl) return;
+    interactiveCanvas.setPointerCapture(e.pointerId);
+    const p = toNorm(e);
+    isDrawing = true;
+    drawingPts = [{x:p.x, y:p.y}];
+    lastCanvasPt = {x:p.px, y:p.py};
+    drawLiveStroke();
+  } else {
+    if(!isCameraRunning) return;
+    updatePoint(e);
+  }
+});
+
+interactiveCanvas.addEventListener('pointermove', (e) => {
+  if(currentMode === 'image'){
+    if(!isDrawing || !drawingPts) return;
+    const p = toNorm(e);
+    const dx = p.px - lastCanvasPt.x, dy = p.py - lastCanvasPt.y;
+    if(Math.sqrt(dx*dx + dy*dy) < 3) return;
+    drawingPts.push({x:p.x, y:p.y});
+    lastCanvasPt = {x:p.px, y:p.py};
+    drawLiveStroke();
+  } else if(isCameraRunning && e.buttons === 1){
+    updatePoint(e);
+  }
+});
+
+interactiveCanvas.addEventListener('pointerup', async () => {
+  if(currentMode === 'image' && isDrawing && drawingPts){
+    isDrawing = false;
+    if(drawingPts.length === 0){ drawingPts = null; return; }
+
+    currentScribble = drawingPts;
+    drawingPts = null;
+    drawLiveStroke();
+
+    inferOverlay.style.display = 'flex';
+    setStatus(false, 'กำลังประมวลผล…', true);
+    await new Promise(r => requestAnimationFrame(r));
+
+    try{
+      const roi = currentScribble.length === 1
+        ? { keypoint: currentScribble[0] }
+        : { scribble: currentScribble };
+      const result = segmenter.segment(imgEl, roi);
+      const mask = result.confidenceMasks[0];
+      confidenceMask = mask.getAsFloat32Array();
+      mask.close?.();
+      renderMaskOverlay();
+      setStatus(true, 'เลือกวัตถุแล้ว — วาดเส้นใหม่เพื่อเปลี่ยนการเลือก');
+    }catch(err){
+      console.error(err);
+      setStatus(false, 'เกิดข้อผิดพลาดในการประมวลผล');
+    }finally{
+      inferOverlay.style.display = 'none';
+      updateButtons();
+    }
+  }
+});
+
+// 5. Webcam Mode Handling
+webcamToggleBtn.addEventListener('click', async () => {
+  if(!isReady) return;
+  if(isCameraRunning){
+    stopCamera();
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    webcam.srcObject = stream;
+    webcam.addEventListener('loadeddata', () => {
+      W = baseCanvas.width = overlayCanvas.width = interactiveCanvas.width = webcam.videoWidth;
+      H = baseCanvas.height = overlayCanvas.height = interactiveCanvas.height = webcam.videoHeight;
+      
+      isCameraRunning = true;
+      webcamToggleBtn.textContent = 'ปิดกล้อง';
+      setStatus(true, 'กล้องทำงานแล้ว — คลิกเลือกวัตถุบนหน้าจอ');
+      renderWebcamLoop();
+    });
+  }catch(err){
+    alert('ไม่สามารถเปิดใช้งานกล้องได้: ' + err.message);
+  }
+});
+
+function stopCamera(){
+  isCameraRunning = false;
+  const stream = webcam.srcObject;
+  if(stream) stream.getTracks().forEach(t => t.stop());
+  webcam.srcObject = null;
+  webcamToggleBtn.textContent = 'เปิดใช้งานกล้อง';
+  confidenceMask = null;
+  activePoint = null;
+  exportBtn.disabled = true;
+  interactiveCtx.clearRect(0,0,W,H);
+  overlayCtx.clearRect(0,0,W,H);
+  setStatus(true, 'ปิดกล้องแล้ว');
+}
+
+function updatePoint(e){
+  const p = toNorm(e);
+  activePoint = { x: p.x, y: p.y };
+  drawTargetPoint(p.px, p.py);
+}
+
+function drawTargetPoint(px, py){
+  interactiveCtx.clearRect(0,0,W,H);
+  if(!activePoint) return;
+  interactiveCtx.beginPath();
+  interactiveCtx.arc(px, py, 6, 0, Math.PI * 2);
+  interactiveCtx.fillStyle = '#1FC7D4';
+  interactiveCtx.fill();
+  interactiveCtx.lineWidth = 2;
+  interactiveCtx.strokeStyle = '#FFFFFF';
+  interactiveCtx.stroke();
+}
+
+async function renderWebcamLoop(){
+  if(!isCameraRunning || currentMode !== 'webcam') return;
+
+  baseCtx.drawImage(webcam, 0, 0, W, H);
+
+  if(activePoint && !isProcessing && segmenter){
+    isProcessing = true;
+    try{
+      const result = segmenter.segment(webcam, { keypoint: activePoint });
+      const mask = result.confidenceMasks[0];
+      confidenceMask = mask.getAsFloat32Array();
+      mask.close?.();
+      renderMaskOverlay();
+      exportBtn.disabled = false;
+    }catch(err){
+      console.error(err);
+    }finally{
+      isProcessing = false;
+    }
+  }
+  requestAnimationFrame(renderWebcamLoop);
+}
+
+// 6. Draw Helpers & Overlays
+function drawLiveStroke(){
+  interactiveCtx.clearRect(0,0,W,H);
+  const drawPath = (pts) => {
+    if(!pts || pts.length === 0) return;
+    interactiveCtx.strokeStyle = '#1FC7D4';
+    interactiveCtx.lineWidth = 3;
+    interactiveCtx.lineCap = 'round';
+    interactiveCtx.lineJoin = 'round';
+    if(pts.length === 1){
+      interactiveCtx.beginPath();
+      interactiveCtx.arc(pts[0].x*W, pts[0].y*H, 3, 0, Math.PI*2);
+      interactiveCtx.fillStyle = '#1FC7D4';
+      interactiveCtx.fill();
+      return;
+    }
+    interactiveCtx.beginPath();
+    interactiveCtx.moveTo(pts[0].x*W, pts[0].y*H);
+    for(let i=1;i<pts.length;i++) interactiveCtx.lineTo(pts[i].x*W, pts[i].y*H);
+    interactiveCtx.stroke();
+  };
+  drawPath(currentScribble);
+  drawPath(drawingPts);
+}
+
+thresholdInput.addEventListener('input', () => {
+  thresholdVal.textContent = (thresholdInput.value / 100).toFixed(2);
+  if(confidenceMask) renderMaskOverlay();
+});
+
+function renderMaskOverlay(){
+  if(!confidenceMask) return;
+  const threshold = thresholdInput.value / 100;
+  const imgData = overlayCtx.createImageData(W, H);
+
+  for(let i = 0; i < W * H; i++){
+    const v = confidenceMask[i];
+    const idx = i * 4;
+    if(v >= threshold){
+      imgData.data[idx]     = 31;   // R
+      imgData.data[idx+1]   = 199;  // G
+      imgData.data[idx+2]   = 212;  // B
+      imgData.data[idx+3]   = Math.round(100 + v * 70); // Alpha
+    }
+  }
+  overlayCtx.putImageData(imgData, 0, 0);
+}
+
+// 7. Clear & Export Operations
+clearBtn.addEventListener('click', () => {
+  currentScribble = [];
+  confidenceMask = null;
+  interactiveCtx.clearRect(0,0,W,H);
+  overlayCtx.clearRect(0,0,W,H);
+  updateButtons();
+  setStatus(true, 'ล้างเส้นแล้ว — ลากวาดใหม่');
+});
+
+clearPointBtn.addEventListener('click', () => {
+  activePoint = null;
+  confidenceMask = null;
+  exportBtn.disabled = true;
+  interactiveCtx.clearRect(0,0,W,H);
+  overlayCtx.clearRect(0,0,W,H);
+  setStatus(true, 'ล้างจุดเลือกแล้ว');
+});
+
+exportBtn.addEventListener('click', exportPNG);
+
+function exportPNG(){
+  if(!confidenceMask) return;
+
+  const threshold = thresholdInput.value / 100;
+  const srcData = baseCtx.getImageData(0, 0, W, H).data;
+  
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = W;
+  outCanvas.height = H;
+  const outCtx = outCanvas.getContext('2d');
+  const outData = outCtx.createImageData(W, H);
+
+  for(let i = 0; i < W * H; i++){
+    const idx = i * 4;
+    const isSelected = confidenceMask[i] >= threshold;
+    outData.data[idx]     = srcData[idx];
+    outData.data[idx+1]   = srcData[idx+1];
+    outData.data[idx+2]   = srcData[idx+2];
+    outData.data[idx+3]   = isSelected ? 255 : 0;
+  }
+
+  outCtx.putImageData(outData, 0, 0);
+
+  outCanvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `segment-export-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+
+function updateButtons(){
+  clearBtn.disabled = !imgEl || currentScribble.length === 0;
+  exportBtn.disabled = !confidenceMask;
+}
+</script>
+</body>
+</html>
