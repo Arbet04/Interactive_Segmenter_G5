@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaPipe — Interactive Segmenter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171A;
+    --panel:#1B1F23;
+    --panel-2:#20252A;
+    --border:#2B3138;
+    --text:#E9E6DF;
+    --text-dim:#868D96;
+    --text-dim-2:#5B6169;
+    --accent:#1FC7D4;     /* MediaPipe-ish teal, matches the slide */
+    --accent-soft:rgba(31,199,212,0.20);
+    --accent-dim:rgba(31,199,212,0.45);
+    --neg:#FF5C7A;
+    --neg-soft:rgba(255,92,122,0.20);
+    --ok:#4ADE80;
+    --checker-a:#1D2125;
+    --checker-b:#25292E;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', sans-serif;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--accent-soft);}
+
+  header{
+    padding:22px 28px 16px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.18em;
+    color:var(--accent);
+    text-transform:uppercase;
+  }
+  h1{ font-size:22px; font-weight:600; margin:0; letter-spacing:-0.01em; }
+  header p{ margin:0; color:var(--text-dim); font-size:13px; flex-basis:100%; }
+  header .badge{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--text-dim-2);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:3px 10px;
+  }
+
+  .toolbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:14px 28px;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+  }
+  .group{
+    display:flex; align-items:center; gap:8px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:6px 10px;
+  }
+  .group label{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px; color:var(--text-dim);
+    letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap;
+  }
+  button{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:500; font-size:13px; color:var(--text);
+    background:var(--panel-2); border:1px solid var(--border);
+    border-radius:8px; padding:8px 14px; cursor:pointer;
+    transition:border-color .15s, background .15s, color .15s;
+  }
+  button:hover{border-color:var(--text-dim-2);}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  button:disabled{opacity:0.35; cursor:not-allowed;}
+  button.primary{ background:var(--accent); border-color:var(--accent); color:#062226; font-weight:600; }
+  button.primary:hover{ filter:brightness(1.1); }
+  button.pill{ padding:6px 12px; border-radius:20px; font-size:12.5px; background:transparent; border-color:transparent; color:var(--text-dim); }
+  button.pill.active{ background:var(--accent-soft); color:var(--accent); border-color:var(--accent-dim); }
+  button.pill.negative.active{ background:var(--neg-soft); color:var(--neg); border-color:rgba(255,92,122,0.45); }
+  input[type="file"]{display:none;}
+  input[type="range"]{
+    -webkit-appearance:none; width:110px; height:3px;
+    background:var(--border); border-radius:2px; outline:none;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #14171A;
+  }
+  input[type="range"]::-moz-range-thumb{
+    width:14px; height:14px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #14171A;
+  }
+  .readout{ font-family:'JetBrains Mono', monospace; font-size:12px; min-width:30px; text-align:right; }
+  .spacer{flex:1;}
+
+  main{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    padding:32px; position:relative; overflow:auto;
+  }
+  .stage{
+    position:relative; border-radius:12px; overflow:hidden;
+    box-shadow:0 0 0 1px var(--border), 0 30px 60px -20px rgba(0,0,0,0.6);
+    background-image:
+      linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%);
+    background-size:20px 20px;
+    background-position:0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color:var(--checker-b);
+    max-width:100%; max-height:100%;
+  }
+  canvas{display:block; max-width:100%; height:auto;}
+  #overlay{position:absolute; top:0; left:0;}
+  #strokes{position:absolute; top:0; left:0; cursor:crosshair; touch-action:none;}
+
+  .dropzone{
+    width:min(640px, 86vw); aspect-ratio:16/10;
+    border:1.5px dashed var(--border); border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; text-align:center; padding:24px;
+    transition:border-color .15s, background .15s; cursor:pointer;
+  }
+  .dropzone.drag{ border-color:var(--accent); background:var(--accent-soft); }
+  .dropzone .icon{
+    width:52px; height:52px; border-radius:50%;
+    border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+  }
+  .dropzone .icon svg{ width:22px; height:22px; stroke:var(--text-dim); }
+  .dropzone strong{ font-size:15px; font-weight:600; }
+  .dropzone span{ font-size:12.5px; color:var(--text-dim); font-family:'JetBrains Mono', monospace; }
+
+  .loading-overlay{
+    position:absolute; inset:0; z-index:5;
+    background:rgba(20,23,26,0.82);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; color:var(--text-dim);
+    text-align:center; padding:20px;
+  }
+  .spinner{
+    width:34px; height:34px; border-radius:50%;
+    border:2.5px solid var(--border); border-top-color:var(--accent);
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .stroke-hint{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--text-dim-2);
+  }
+
+  .statusbar{
+    border-top:1px solid var(--border); background:var(--panel);
+    padding:10px 28px; display:flex; align-items:center; gap:22px;
+    font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--text-dim);
+    flex-wrap:wrap;
+  }
+  .statusbar b{ color:var(--text); font-weight:500; }
+  .statusbar .dot{ width:6px; height:6px; border-radius:50%; background:var(--text-dim-2); display:inline-block; margin-right:6px; }
+  .statusbar .dot.on{ background:var(--ok); }
+  .statusbar .dot.busy{ background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+  .hint{
+    font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--text-dim-2);
+  }
+
+  @media (max-width:720px){
+    header, .toolbar, .statusbar{ padding-left:16px; padding-right:16px; }
+    main{ padding:16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="eyebrow">MediaPipe · Interactive Segmentation</span>
+  <h1>Interactive Segmenter</h1>
+  <span class="badge">AI-powered · on-device</span>
+  <p>ลากเส้นบนวัตถุที่อยากเลือก แล้วให้โมเดล MediaPipe ช่วยตัดขอบให้เอง</p>
+</header>
+
+<div class="toolbar">
+  <button class="primary" id="uploadBtn">อัปโหลดภาพ</button>
+  <input type="file" id="fileInput" accept="image/*">
+
+  <div class="group" style="gap:2px; padding:4px;">
+    <span class="pill active" style="cursor:default;">วาดเส้นบนวัตถุที่ต้องการเลือก</span>
+  </div>
+
+  <div class="group">
+    <label>Threshold</label>
+    <input type="range" id="threshold" min="0" max="100" value="50">
+    <span class="readout" id="thresholdVal">0.50</span>
+  </div>
+
+  <div class="spacer"></div>
+
+  <button id="clearBtn" disabled>ล้างเส้น (Clear Strokes)</button>
+  <button class="primary" id="exportBtn" disabled>ส่งออก PNG</button>
+</div>
+
+<main>
+  <div class="dropzone" id="dropzone">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+    </div>
+    <strong>ลากภาพมาวาง หรือคลิกเพื่อเลือกไฟล์</strong>
+    <span>กำลังโหลดโมเดล MediaPipe…</span>
+  </div>
+  <div class="stage" id="stage" style="display:none;">
+    <canvas id="base"></canvas>
+    <canvas id="overlay"></canvas>
+    <canvas id="strokes"></canvas>
+    <div class="loading-overlay" id="inferOverlay" style="display:none;">
+      <div class="spinner"></div>
+      <span>กำลังประมวลผลด้วยโมเดล…</span>
+    </div>
+  </div>
+</main>
+
+<div class="statusbar">
+  <span><span class="dot" id="statusDot"></span><b id="statusText">กำลังโหลด MediaPipe runtime…</b></span>
+  <span class="hint" id="hintText">ลากวาดเส้นบนวัตถุที่ต้องการเลือก — วาดเส้นใหม่จะแทนที่การเลือกเดิม</span>
+  <span style="margin-left:auto;">@mediapipe/tasks-vision</span>
+</div>
+
+<script type="module">
+import {
+  FilesetResolver,
+  InteractiveSegmenterLegacy
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+// NOTE: The v2 "magic_touch" model + current runtime (1.0.1) has a known
+// upstream bug (RET_CHECK: tensor count mismatch, "5 vs. 6" — the model
+// expects a feedback tensor the runtime disables for multi-signature
+// models). Until MediaPipe ships a fix, we use the older, stable v1
+// "Legacy" API + model instead. Trade-off: the v1 model's RegionOfInterest
+// only supports a single scribble (no separate positive/negative brushes,
+// no multi-stroke accumulation) — every new stroke you draw fully replaces
+// the previous selection rather than refining it.
+
+const fileInput = document.getElementById('fileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+const dropzone = document.getElementById('dropzone');
+const stage = document.getElementById('stage');
+const baseCanvas = document.getElementById('base');
+const overlayCanvas = document.getElementById('overlay');
+const strokesCanvas = document.getElementById('strokes');
+const baseCtx = baseCanvas.getContext('2d', {willReadFrequently:true});
+const overlayCtx = overlayCanvas.getContext('2d');
+const strokesCtx = strokesCanvas.getContext('2d');
+const inferOverlay = document.getElementById('inferOverlay');
+
+const thresholdInput = document.getElementById('threshold');
+const thresholdVal = document.getElementById('thresholdVal');
+const clearBtn = document.getElementById('clearBtn');
+const exportBtn = document.getElementById('exportBtn');
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+
+const MAX_DIM = 800;
+const MODEL_URL =
+  "https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite";
+
+let segmenter = null;
+let W = 0, H = 0;
+let imgEl = null;
+let confidenceMask = null;   // Float32Array [0,1], length W*H
+let currentScribble = [];    // the most recent finalized stroke's points (replaces on redraw)
+let ready = false;
+
+function setStatus(on, text, busy){
+  statusDot.classList.toggle('on', !!on && !busy);
+  statusDot.classList.toggle('busy', !!busy);
+  statusText.textContent = text;
+}
+
+// ---------- Load model ----------
+async function init(){
+  try{
+    setStatus(false, 'กำลังโหลด wasm runtime…', true);
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    setStatus(false, 'กำลังโหลดโมเดล Interactive Segmenter…', true);
+    segmenter = await InteractiveSegmenterLegacy.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: MODEL_URL,
+        delegate: "CPU"
+      },
+      outputConfidenceMasks: true
+    });
+    ready = true;
+    setStatus(true, 'พร้อมใช้งาน — อัปโหลดภาพเพื่อเริ่ม');
+    dropzone.querySelector('span').textContent = 'JPG · PNG · WEBP — โมเดลรันในเบราว์เซอร์ ไม่มีการอัปโหลดขึ้นเซิร์ฟเวอร์';
+  }catch(err){
+    console.error(err);
+    setStatus(false, 'โหลดโมเดลไม่สำเร็จ — ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต');
+    dropzone.querySelector('span').textContent = 'ไม่สามารถโหลดโมเดลจาก MediaPipe CDN ได้ ลองรีเฟรชหน้า';
+  }
+}
+init();
+
+// ---------- File loading ----------
+uploadBtn.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+
+['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, e => {
+  e.preventDefault(); dropzone.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => {
+  e.preventDefault(); dropzone.classList.remove('drag');
+}));
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if(f && f.type.startsWith('image/')) loadFile(f);
+});
+
+function loadFile(file){
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    let w = img.naturalWidth, h = img.naturalHeight;
+    const scale = Math.min(1, MAX_DIM / Math.max(w,h));
+    W = Math.max(1, Math.round(w*scale));
+    H = Math.max(1, Math.round(h*scale));
+
+    baseCanvas.width = W; baseCanvas.height = H;
+    overlayCanvas.width = W; overlayCanvas.height = H;
+    strokesCanvas.width = W; strokesCanvas.height = H;
+    baseCanvas.style.width = W+'px'; baseCanvas.style.height = H+'px';
+    overlayCanvas.style.width = W+'px'; overlayCanvas.style.height = H+'px';
+    strokesCanvas.style.width = W+'px'; strokesCanvas.style.height = H+'px';
+
+    baseCtx.drawImage(img, 0, 0, W, H);
+    imgEl = img;
+    confidenceMask = null;
+    currentScribble = [];
+    strokesCtx.clearRect(0,0,W,H);
+    overlayCtx.clearRect(0,0,W,H);
+
+    dropzone.style.display = 'none';
+    stage.style.display = 'block';
+    updateButtons();
+
+    if(ready){
+      setStatus(true, 'พร้อมใช้งาน — ลากวาดเส้นบนวัตถุที่ต้องการเลือก');
+    }else{
+      setStatus(false, 'โหลดภาพแล้ว แต่โมเดลยังไม่พร้อม — รอสักครู่แล้วลองวาดใหม่', true);
+      const waitForModel = setInterval(() => {
+        if(ready){
+          clearInterval(waitForModel);
+          setStatus(true, 'พร้อมใช้งาน — ลากวาดเส้นบนวัตถุที่ต้องการเลือก');
+        }
+      }, 400);
+    }
+  };
+  img.onerror = () => {
+    setStatus(false, 'เปิดไฟล์ภาพไม่สำเร็จ ลองไฟล์อื่น');
+  };
+  img.src = url;
+}
+
+// ---------- Toolbar wiring ----------
+thresholdInput.addEventListener('input', () => {
+  thresholdVal.textContent = (thresholdInput.value/100).toFixed(2);
+  if(confidenceMask) renderMaskOverlay();
+});
+
+clearBtn.addEventListener('click', () => {
+  currentScribble = [];
+  confidenceMask = null;
+  strokesCtx.clearRect(0,0,W,H);
+  overlayCtx.clearRect(0,0,W,H);
+  updateButtons();
+  setStatus(true, 'ล้างเส้นแล้ว — ลากวาดบนวัตถุที่ต้องการเลือกใหม่');
+});
+
+exportBtn.addEventListener('click', exportSelection);
+
+function updateButtons(){
+  const has = !!imgEl;
+  clearBtn.disabled = !has || currentScribble.length === 0;
+  exportBtn.disabled = !confidenceMask;
+}
+
+// ---------- Drag to draw a stroke, segment on release ----------
+let isDrawing = false;
+let drawingPts = null;      // points of the stroke currently being dragged
+let lastCanvasPt = null;    // last point in canvas pixel space, for sampling distance
+
+function toNorm(e){
+  const rect = strokesCanvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (W / rect.width);
+  const py = (e.clientY - rect.top) * (H / rect.height);
+  return { x: px / W, y: py / H, px, py };
+}
+
+strokesCanvas.addEventListener('pointerdown', (e) => {
+  if(!imgEl) return;
+  if(!ready){
+    setStatus(false, 'โมเดลยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่', true);
+    return;
+  }
+  strokesCanvas.setPointerCapture(e.pointerId);
+  const p = toNorm(e);
+  isDrawing = true;
+  drawingPts = [{x:p.x, y:p.y}];
+  lastCanvasPt = {x:p.px, y:p.py};
+  drawLiveStroke();
+});
+
+strokesCanvas.addEventListener('pointermove', (e) => {
+  if(!isDrawing || !drawingPts) return;
+  const p = toNorm(e);
+  const dx = p.px - lastCanvasPt.x, dy = p.py - lastCanvasPt.y;
+  if(Math.sqrt(dx*dx + dy*dy) < 3) return; // sample every ~3px to keep the stroke light
+  drawingPts.push({x:p.x, y:p.y});
+  lastCanvasPt = {x:p.px, y:p.py};
+  drawLiveStroke();
+});
+
+strokesCanvas.addEventListener('pointerup', async (e) => {
+  if(!isDrawing || !drawingPts) return;
+  isDrawing = false;
+  if(drawingPts.length === 0){ drawingPts = null; return; }
+
+  // A new stroke replaces the previous selection (v1 model only accepts a
+  // single scribble region — see the note near the imports above).
+  currentScribble = drawingPts;
+  drawingPts = null;
+  updateButtons();
+  drawLiveStroke();
+
+  inferOverlay.style.display = 'flex';
+  setStatus(false, 'กำลังประมวลผล…', true);
+  await new Promise(r => requestAnimationFrame(r));
+
+  try{
+    const roi = currentScribble.length === 1
+      ? { keypoint: currentScribble[0] }
+      : { scribble: currentScribble };
+    const result = segmenter.segment(imgEl, roi);
+    const mask = result.confidenceMasks[0];
+    confidenceMask = mask.getAsFloat32Array();
+    mask.close?.();
+    renderMaskOverlay();
+    setStatus(true, 'เลือกแล้ว — วาดเส้นใหม่เพื่อเลือกใหม่');
+  }catch(err){
+    console.error(err);
+    setStatus(false, 'ประมวลผลไม่สำเร็จ ลองวาดใหม่อีกครั้ง');
+  }finally{
+    inferOverlay.style.display = 'none';
+    updateButtons();
+  }
+});
+
+function drawLiveStroke(){
+  strokesCtx.clearRect(0,0,W,H);
+  const drawPath = (pts) => {
+    if(!pts || pts.length === 0) return;
+    strokesCtx.strokeStyle = '#1FC7D4';
+    strokesCtx.lineWidth = 3;
+    strokesCtx.lineCap = 'round';
+    strokesCtx.lineJoin = 'round';
+    if(pts.length === 1){
+      strokesCtx.beginPath();
+      strokesCtx.arc(pts[0].x*W, pts[0].y*H, 3, 0, Math.PI*2);
+      strokesCtx.fillStyle = '#1FC7D4';
+      strokesCtx.fill();
+      return;
+    }
+    strokesCtx.beginPath();
+    strokesCtx.moveTo(pts[0].x*W, pts[0].y*H);
+    for(let i=1;i<pts.length;i++) strokesCtx.lineTo(pts[i].x*W, pts[i].y*H);
+    strokesCtx.stroke();
+  };
+  drawPath(currentScribble);
+  drawPath(drawingPts);
+}
+
+// ---------- Render mask overlay ----------
+function renderMaskOverlay(){
+  if(!confidenceMask) return;
+  const threshold = thresholdInput.value / 100;
+  const imgData = overlayCtx.createImageData(W, H);
+  for(let i=0; i<W*H; i++){
+    const v = confidenceMask[i];
+    const idx = i*4;
+    if(v >= threshold){
+      imgData.data[idx]   = 31;
+      imgData.data[idx+1] = 199;
+      imgData.data[idx+2] = 212;
+      imgData.data[idx+3] = Math.round(90 + v*80);
+    }
+  }
+  overlayCtx.putImageData(imgData, 0, 0);
+}
+
+// ---------- Export ----------
+function exportSelection(){
+  if(!confidenceMask) return;
+  const threshold = thresholdInput.value / 100;
+  const srcData = baseCtx.getImageData(0,0,W,H).data;
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const octx = out.getContext('2d');
+  const outData = octx.createImageData(W,H);
+  for(let i=0;i<W*H;i++){
+    const idx = i*4;
+    const selected = confidenceMask[i] >= threshold;
+    outData.data[idx]   = srcData[idx];
+    outData.data[idx+1] = srcData[idx+1];
+    outData.data[idx+2] = srcData[idx+2];
+    outData.data[idx+3] = selected ? 255 : 0;
+  }
+  octx.putImageData(outData, 0, 0);
+  out.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mediapipe-segment.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+</script>
+</body>
+</html>
